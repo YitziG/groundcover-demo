@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog
+  namespace: pebble
+  labels:
+    app: catalog
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: catalog
+  template:
+    metadata:
+      labels:
+        app: catalog
+    spec:
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: catalog
+          image: pebble-catalog:local
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: DATABASE_URL
+              value: postgres://pebble:pebble@postgres:5432/pebble
+            - name: REDIS_URL
+              value: redis://redis:6379/0
+            # Scenarios flip these. Defaults keep the shop healthy.
+            - name: SLOW_DB_MS
+              value: "0"
+            - name: OOM
+              value: "0"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 192Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog
+  namespace: pebble
+spec:
+  selector:
+    app: catalog
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
