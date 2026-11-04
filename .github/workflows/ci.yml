@@ -1,0 +1,68 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint shell scripts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck -x -P SCRIPTDIR setup.sh teardown.sh scenarios/*.sh scripts/*.sh services/loadgen/load.sh
+
+      - name: Reject observability SDKs
+        run: |
+          if grep -RInE 'opentelemetry|prom-client|prometheus_client|dd-trace|ddtrace|@opentelemetry' services; then
+            echo "The app must not ship an observability SDK."
+            exit 1
+          fi
+
+      - name: Install kind and kubectl
+        run: |
+          curl -fsSL -o /tmp/kind https://kind.sigs.k8s.io/dl/v0.29.0/kind-linux-amd64
+          sudo install -m 755 /tmp/kind /usr/local/bin/kind
+          # Match kind v0.29.0's default node image (Kubernetes v1.33.1).
+          curl -fsSL -o /tmp/kubectl https://dl.k8s.io/release/v1.33.1/bin/linux/amd64/kubectl
+          sudo install -m 755 /tmp/kubectl /usr/local/bin/kubectl
+          kind version
+          kubectl version --client
+
+      - name: Prefer the overlay2 image store
+        run: |
+          # kind load imports `docker save` output. That archive is incomplete when
+          # Docker's containerd snapshotter is on, and Postgres/Redis then fail to import.
+          if docker info 2>/dev/null | grep -q 'containerd-snapshotter: true'; then
+            sudo mkdir -p /etc/docker
+            printf '%s\n' '{"features":{"containerd-snapshotter":false},"storage-driver":"overlay2"}' | sudo tee /etc/docker/daemon.json
+            sudo systemctl restart docker
+          fi
+          docker info
+
+      - name: Bring the cluster up
+        run: ./setup.sh
+
+      - name: Smoke test
+        run: ./scripts/smoke.sh
+
+      - name: Scenario toggles
+        run: ./scripts/verify-scenarios.sh
+
+      - name: groundcover install fails cleanly without .env
+        run: |
+          set +e
+          output="$(./scripts/install-groundcover.sh 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [[ "$status" -eq 0 ]]; then
+            echo "expected a non-zero exit when .env is missing"
+            exit 1
+          fi
+          printf '%s\n' "$output" | grep -q 'no .env file'

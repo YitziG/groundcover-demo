@@ -1,0 +1,6 @@
+.env
+deploy/groundcover/values.local.yaml
+node_modules
+__pycache__
+*.pyc
+.DS_Store

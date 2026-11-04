@@ -1,0 +1,18 @@
+# One worker, plus the control plane.
+# groundcover's coverage policy excludes control-plane nodes, so the shop
+# runs on the worker. https://docs.groundcover.com/getting-started/installation-and-updating/connect-kubernetes-cluster
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: pebble
+networking:
+  # iptables mode needs the xt_statistic match, which some kernels do not ship.
+  # nftables mode is supported by kind and by the Kubernetes 1.33 node image
+  # this repo installs.
+  kubeProxyMode: nftables
+nodes:
+  - role: control-plane
+  - role: worker
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP
