@@ -17,8 +17,10 @@ The shop is unchanged and keeps running without it.
 
   cp .env.example .env
 
-Set GROUNDCOVER_SITE to the ingestion endpoint from the ingestion keys tab
-(Settings -> Access -> Ingestion Keys). Then run this script again.
+Set GROUNDCOVER_SITE to the ingestion endpoint from
+Settings -> Access -> Ingestion Keys. That tab stays empty until a BYOC
+backend exists in your own cloud account. Signup alone does not create one.
+See the README, then run this script again.
 
 Docs: https://docs.groundcover.com/getting-started/installation-and-updating/connect-kubernetes-cluster
 EOF

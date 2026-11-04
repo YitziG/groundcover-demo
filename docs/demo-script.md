@@ -1,103 +1,77 @@
 # Five-minute demo
 
-Practice this once before you give it. `./setup.sh` and `./scripts/install-groundcover.sh` should already have finished, and the Workloads page should already show the `pebble` namespace. Image builds and the first sensor sync are a bad use of the five minutes.
+Do this without a groundcover backend. `./setup.sh` should already have finished, so image builds are not part of the five minutes. Have a terminal in this repo and a browser on [play.groundcover.com](https://play.groundcover.com).
 
-Have two windows ready: a terminal in this repo, and the groundcover app with the time range set to the last 15 minutes. The Cluster Picker should be on `pebble` / `dev`.
+The playground modal says "Explore the groundcover playground" and "A live Kubernetes cluster, already full of data. No install. No credit card." Type an email, click Launch Playground, and leave the Workloads page up. The cluster in that app is `k8s-demo`. Say that out loud the first time you switch windows. It is groundcover's sample data, not Pebble.
 
-If a rollout feels slow, keep talking using the "while that restarts" lines. Do not click ahead into a page you have not opened during practice.
+Rollouts take about twenty seconds. Talk over them. If one runs long, skip to the next beat instead of clicking around a page you have not opened.
 
 ## 0:00 — What this is
 
 Say:
 
-> This is Pebble, a two-service shop. Node takes the order, Python reads the catalog, Postgres and Redis are the data stores. Nothing in the code imports an SDK. The only logs are stdout. groundcover is an eBPF sensor on the node. I want to show the map, a trace, a log line, and then break three things without editing code.
+> This is Pebble, a two-service shop. Node takes the order, Python reads the catalog, Postgres and Redis sit behind them. Nothing in the code imports an SDK. The logs are stdout. I am not installing groundcover on this cluster. A real install needs a BYOC backend in your own AWS, GCP, or Azure account before an ingestion endpoint even exists. The UI I will click is their public playground, which is a different cluster.
 
-Show `services/shop/package.json` and `services/catalog/requirements.txt`. The dependencies are `pg`, `redis`, and `psycopg`. Point at one `console.log` / `print` in `services/shop/server.js` or `services/catalog/app.py`.
+Show `services/shop/package.json` and `services/catalog/requirements.txt`. The dependencies are `pg`, `redis`, and `psycopg`.
 
 ```bash
 curl -s http://127.0.0.1:8080/products
+kubectl -n pebble logs deploy/loadgen --tail=5
 ```
 
-Say: the load generator has been hitting this since the cluster came up.
+Say the path the lines imply: loadgen, shop, catalog, then Postgres and Redis.
 
-## 0:45 — What the sensor already sees
-
-Open the Workloads page. Filter or scroll to namespace `pebble`. Name `shop`, `catalog`, `postgres`, `redis`, `loadgen`.
-
-Open the Map page (the eBPF-only one, not Traces → Map). You should see HTTP from `loadgen` to `shop` and from `shop` to `catalog`, plus PostgreSQL and Redis. Say that a green line means every status on it is OK, which is the legend in the maps doc.
-
-Click one HTTP trace. Mention the status code, the path, and that the body is visible because the sensor captured the payload. If a SQL span is on screen, read the statement. Do not claim the log line is tied to this trace by a trace id. Say the app never writes one, so you correlate by workload and time. The trace view does include nearby logs from that service.
-
-If the map is empty, fall back to `kubectl -n pebble get pods` and say the sensor is not seeing the worker. Check the `groundcover` namespace after the demo. Do not invent a reason on stage.
-
-## 2:00 — Slow query
+## 1:10 — Slow query, in the terminal
 
 ```bash
 ./scenarios/slow-db.sh on
 ```
 
-While the catalog pod restarts (about twenty seconds):
+While catalog restarts:
 
-> This sets `SLOW_DB_MS=2000` on the catalog Deployment. The process runs `SELECT pg_sleep(2)` on every product read. Health checks do not, so Kubernetes still thinks the pod is fine.
-
-Then:
+> This sets `SLOW_DB_MS=2000`. Every product read runs `SELECT pg_sleep(2)`. The health check does not, so the pod stays Ready.
 
 ```bash
 curl -s -o /dev/null -w 'products took %{time_total}s\n' http://127.0.0.1:8080/products
+kubectl -n pebble logs deploy/catalog --tail=8
 ```
 
-In Traces, filter:
-
-```
-namespace:pebble workload:catalog
-```
-
-Point at `duration_seconds` and, if the span has it, `db.statement`. Mention P95 latency on the catalog workload as the metric form of the same thing. The map line stays green.
-
-Leave it on for the next sentence, then turn it off so the later steps are not all slow:
+Read the `msg=slow_query` line. Then:
 
 ```bash
 ./scenarios/slow-db.sh off
 ```
 
-You do not have to wait for this rollout before you start the next sentence. Start the error toggle once the command is in.
+You do not have to wait for this rollout. Switch to the browser.
 
-## 3:10 — Checkouts fail, the process stays up
+## 2:20 — The same kinds of signals, on their cluster
+
+On Workloads, the table columns include Requests, Error Rate, and P95. The cluster column says `k8s-demo`. Scroll to namespace `flower-shop`. When this was checked on 4 Nov 2026, `order-service` showed an error rate of 100% and a P95 around 28 ms, and `postgres` in that namespace showed an error rate around 54%. Say those numbers only if they are still on screen. They are not Pebble.
+
+Open Map. The facet list counted HTTP, PostgreSQL, and Redis among the edge types, and split sources into eBPF and opentelemetry. Edges on the graph were labeled `http`, `grpc`, and `postgresql`. Point at `load-generator` and `product-catalog` if they are in view. Say Pebble's calls are the same protocols, on a laptop, and this graph is not those pods.
+
+Open Traces. The page has a Golden Signals strip: Requests, Errors, Latencies, with P95 and P50 on the latency chart. The Errors legend includes `500`. Click one short row if you want the drawer. One that was open was labeled "eBPF Trace", a `200` from `frontend-proxy` to `frontend`, with the request headers in a Request tab. Sorting the Latency column brought 10 minute `flagd` `EventStream` calls, some marked `DEADLINE_EXCEEDED`. Say what that is: long-lived RPCs in the sample, not the two-second SQL sleep you just timed.
+
+## 3:40 — Errors
 
 ```bash
 ./scenarios/error-spike.sh on
-```
-
-While `shop` restarts:
-
-> `FORCE_ERROR=1` makes `POST /orders` return 500. `GET /products` still returns 200. The load generator sends both, so the error rate moves and the pod does not die.
-
-```bash
 curl -s -o /dev/null -w 'checkout %{http_code}\n' \
   -H 'content-type: application/json' \
   -d '{"sku":"mug","qty":1}' \
   http://127.0.0.1:8080/orders
+kubectl -n pebble logs deploy/shop --tail=5
 ```
 
-Logs:
+Say `POST /orders` is 500 and `GET /products` is still 200. The shop log line is `level=error`.
 
-```
-namespace:pebble workload:shop level:error
-```
-
-Traces:
-
-```
-namespace:pebble workload:shop status_code>=500
-```
-
-Say the failed checkout is the kind of call the traces doc says sampling keeps. If the map has refreshed, the line into `shop` for those checkouts is red. Error rate is the APM signal, same page family as the latency you just showed.
+In the playground, open Logs and use the filter `level:Error`. The chip showed on the order of 9K results. Read an `order-service` line if it is there. The ones on screen were "Failed to process order" and "Failed to create order in database", from namespace `flower-shop`. That is the sample shop failing, not ours.
 
 ```bash
 ./scenarios/error-spike.sh off
 ```
 
-## 4:10 — Kill the catalog pod
+## 4:30 — OOM, terminal only
 
 ```bash
 ./scenarios/oom.sh on
@@ -106,30 +80,18 @@ kubectl -n pebble get pods -l app=catalog
 
 Say:
 
-> `OOM=1` allocates until the 192Mi limit kills the container. The Deployment is Recreate, so the old pod is gone. You want the reason `OOMKilled`. After a couple of restarts Kubernetes shows `CrashLoopBackOff` as well.
+> `OOM=1` allocates past the 192Mi limit. You want the reason `OOMKilled`. The playground nav has Events. I did not find an OOM example there, so this beat stays on the pod list.
 
-Run the get command a second time if the first still says `Running`. It usually flips within a few seconds.
-
-Events filter, if you have time to open it:
-
-```
-namespace:pebble type:Warning reason:OOMKilling
-```
-
-One sentence on the user side: shop now logs 502 when it cannot reach catalog. You can show that with `kubectl -n pebble logs deploy/shop --tail=5` if the UI is behind.
-
-## 4:40 — Close
+Run `kubectl get pods` again if the first line still says Running. Then:
 
 ```bash
 ./scenarios/oom.sh off
 ```
 
-Say:
+> Same three switches, no code edit. The playground is their cluster. Pebble stays on the laptop until someone provisions a BYOC backend and runs `./scripts/install-groundcover.sh`. `./teardown.sh` deletes the kind cluster.
 
-> That puts `OOM` back to 0 and rolls a normal catalog pod. Same command shape for all three failures: on, off, no code edit. The repo README has the filters I just used, with links to the doc page each one comes from. `./teardown.sh` deletes the cluster.
-
-Stop talking. If someone asks about trace-id correlation, answer it: the product can do it when the log line contains a trace id, and this demo does not emit one, on purpose.
+If someone asks about trace ids: the product correlates a log to a trace when the log line contains a trace id. This demo never writes one.
 
 ## If you are cut short
 
-Do the map, the slow query, and the 500. Describe the OOM from `./scenarios/oom.sh` and the `reason:OOMKilling` filter instead of waiting for the pod to loop. Do not skip the "no SDK in the code" moment. That is the point of the repo.
+Do the slow `curl`, the `flower-shop` error rate on Workloads, and one `level:Error` log. Skip the OOM, or read the `./scenarios/oom.sh` command without waiting for the kill. Do not skip the "no SDK, and the playground is not this app" line.

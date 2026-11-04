@@ -74,13 +74,18 @@ Tear it down:
 
 That deletes the kind cluster, including a groundcover install if you added one.
 
-## Connect groundcover
+## Look at groundcover without installing it
 
-Do this after the shop is up. Skip it if you only want the app.
+The shop does not need an account. To see the product, open [play.groundcover.com](https://play.groundcover.com). A modal asks for an email and says "A live Kubernetes cluster, already full of data. No install. No credit card." After Launch Playground the app shows groundcover's sample cluster, `k8s-demo`. That is not Pebble. `docs/demo-script.md` uses that playground next to the terminal.
 
-1. Sign up on a computer and create a workspace. Phones and tablets cannot sign up. The steps are in [Login and Create a Workspace](https://docs.groundcover.com/getting-started/login-and-create-a-workspace). The docs refer to the app at [app.groundcover.com](https://app.groundcover.com). The console then walks you through creating a backend. Follow that. The [billing page](https://docs.groundcover.com/use-groundcover/billing) lists a Free plan along with Team, Enterprise, and On-Premise. This repo does not pick a plan for you, and it does not state plan limits. Pricing on the [pricing page](https://www.groundcover.com/pricing) is per monitored node or host, not per gigabyte ingested.
-2. In the app, open **Settings → Access → Ingestion Keys** and copy the ingestion endpoint. That value is `{BYOC_ENDPOINT}` in the install docs. Optionally create a key of type **Sensor**. [Ingestion keys](https://docs.groundcover.com/collect-data/ingestion-keys).
-3. On the machine that has the kind cluster:
+## Run it against your own groundcover
+
+Do this only if you are willing to provision a backend in your own cloud account. The sensor has nowhere to send data until that backend exists, and this repo does not create one.
+
+1. Sign up on a computer at [app.groundcover.com](https://app.groundcover.com). The login is an email code through `auth.groundcover.com`. Phones and tablets cannot sign up. The steps start at [Login and Create a Workspace](https://docs.groundcover.com/getting-started/login-and-create-a-workspace), which says to create a workspace and a backend. On 4 Nov 2026 the console banner read "You have 14 days left on your trial". No card was requested, and no plan picker was shown. The [billing page](https://docs.groundcover.com/administer/billing) still lists plan names Free, Team, Enterprise, and On-Premise. That page is not a promise that signup gives you a hosted backend.
+2. The console then requires a BYOC backend in an AWS, GCP, or Azure account you own. The screen is [console.groundcover.com/backends/new](https://console.groundcover.com/backends/new), headed "Choose your cloud provider". There was no groundcover-hosted option. Ingestion keys and the endpoint stay out of reach until the backend exists. [Architecture overview](https://docs.groundcover.com/architecture/overview) describes BYOC as a backend in a dedicated cluster in your cloud, with the sensor in each monitored cluster and the UI reached through groundcover's cloud. The same page lists on-prem and air-gapped setups. The [BYOC page](https://docs.groundcover.com/architecture/byoc) is the cloud-account guide (AWS, GCP, Azure). The [intro](https://docs.groundcover.com/) says the BYOC option that runs the control plane in your environment is currently a paid plan, and the [Azure setup](https://docs.groundcover.com/architecture/byoc/setup-byoc-with-azure) says BYOC is for paid plans. Read those before you create cloud resources. This demo does not.
+3. After the backend is up, open **Settings → Access → Ingestion Keys** and copy the ingestion endpoint. That value is `{BYOC_ENDPOINT}` in the install docs. A Sensor key is optional. [Ingestion keys](https://docs.groundcover.com/collect-data/ingestion-keys). The [architecture overview](https://docs.groundcover.com/architecture/overview) says price tracks the average number of monitored nodes, not the volume of logs or traces. It does not publish a free-tier node cap, and neither does this repo.
+4. On the machine that has the kind cluster:
 
 ```bash
 cp .env.example .env
@@ -129,7 +134,7 @@ The [traces](https://docs.groundcover.com/investigate/traces-and-apm/traces) pag
 
 ## Where to look
 
-These are the pages the current docs actually name. Filter with the scope keys they recommend (`namespace`, `workload`, and `cluster` or `env` when you have them). The namespace is `pebble`.
+These are the pages the current docs actually name, for a cluster whose sensor is reporting. On the playground the same nav labels are Workloads, Map, Logs, Traces, and Events, filled with `k8s-demo` rather than `pebble`. Filter with the scope keys the docs recommend (`namespace`, `workload`, and `cluster` or `env` when you have them). For this repo the namespace is `pebble`.
 
 | You want | Where the docs send you |
 | --- | --- |
@@ -148,6 +153,8 @@ One limit, on purpose: [log and trace correlation by trace id](https://docs.grou
 ## Scenarios
 
 Run one at a time. Each script patches an environment variable and lets Kubernetes roll the pod. Nothing in git changes. `make fix` turns all three off. `./setup.sh` also restores the defaults, because they live in the manifests.
+
+Check the symptom in the terminal. The "In groundcover" notes apply after a sensor is sending this cluster to a backend you already have. They are not something the playground will show for these pods.
 
 ### Slow database
 

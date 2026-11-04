@@ -26,48 +26,34 @@ The script creates a cluster named `pebble`, builds three local images, loads th
 
 A product read goes shop, then catalog, then SQL, then a Redis cache for 30 seconds. A checkout asks catalog for the SKU, inserts a row, and stores the order JSON in Redis for ten minutes. Health checks do none of that, so a slow query does not fail the pod probe. There is no mesh and no sidecar. The [APM page](https://docs.groundcover.com/investigate/traces-and-apm/application-performance-monitoring-apm) describes the sensor classifying the protocol and attaching the pods on each side of the call.
 
-## Connect a workspace
+## Look, without a backend
 
-Create the workspace from a computer, using [Login and Create a Workspace](https://docs.groundcover.com/getting-started/login-and-create-a-workspace). The docs call the app host [app.groundcover.com](https://app.groundcover.com). Let the console create the backend. The [billing page](https://docs.groundcover.com/use-groundcover/billing) lists a Free plan next to Team, Enterprise, and On-Premise. This walkthrough does not guess what that plan includes. The [pricing page](https://www.groundcover.com/pricing) charges for monitored nodes or hosts, not for ingested volume.
+[play.groundcover.com](https://play.groundcover.com) opens groundcover's own sample cluster. The modal says "A live Kubernetes cluster, already full of data. No install. No credit card." The cluster picker is `k8s-demo`. None of those workloads are Pebble. Use it to see the shape of the UI: Workloads lists Requests, Error Rate, and P95; Map draws HTTP, PostgreSQL, and Redis edges; Logs and Traces are separate pages. The five-minute script in [demo-script.md](demo-script.md) walks the screens that were actually open, and it keeps the broken pods in the terminal.
 
-**Settings → Access → Ingestion Keys** shows the ingestion endpoint. Copy `.env.example` to `.env`, set `GROUNDCOVER_SITE`, and run `./scripts/install-groundcover.sh`. The script installs the CLI if it is missing, writes a gitignored values file, and runs `groundcover deploy -f` on it. The values match the install doc: backend disabled, your endpoint as the ingress site, `clusterId` `pebble`, `env` `dev`. If `.env` is missing, the script exits and the shop is untouched.
+## Your own groundcover
 
-`groundcover auth login` is the documented login command if the CLI asks. If it asks about taints, skip the control plane. The worker has no taint. You can leave `GROUNDCOVER_TOKEN` empty. The CLI reuses an ingestion key or provisions one.
+A sensor install needs a backend first. [Login and Create a Workspace](https://docs.groundcover.com/getting-started/login-and-create-a-workspace) says to create a workspace and a backend, then follow the console to create a groundcover BYOC backend. Signup at [app.groundcover.com](https://app.groundcover.com) is an email code through `auth.groundcover.com`, and it only works from a computer. On 4 Nov 2026 the banner read "You have 14 days left on your trial". No card was asked, and no plan list appeared. The [billing page](https://docs.groundcover.com/administer/billing) still names Free, Team, Enterprise, and On-Premise. That list did not show up as a choice, and it did not offer a groundcover-hosted place to send data.
 
-The sensor is a privileged DaemonSet, which is how it loads eBPF. The `portal` pod calls `app.groundcover.com` on port 443, so the VM needs outbound HTTPS. You do not open an ingress. The [traces page](https://docs.groundcover.com/investigate/traces-and-apm/traces) says eBPF traces show up within seconds. If a page is empty, check the `groundcover` namespace and BTF before you assume the shop is quiet.
+The next console screen is [backends/new](https://console.groundcover.com/backends/new): choose AWS, GCP, or Azure. Ingestion keys stay unavailable until that backend exists. [Architecture overview](https://docs.groundcover.com/architecture/overview) describes the backend as a dedicated cluster in your cloud, with the eBPF sensor in each monitored cluster and the UI reached through groundcover's cloud. The same page lists on-prem and air-gapped setups, and it says price follows the average number of monitored nodes rather than data volume. The [BYOC page](https://docs.groundcover.com/architecture/byoc) is the cloud-account guide. The [intro](https://docs.groundcover.com/) says the BYOC control-plane option is currently a paid plan, and the [Azure guide](https://docs.groundcover.com/architecture/byoc/setup-byoc-with-azure) says BYOC is for paid plans. Creating the account costs money. Skip it if you only want the shop and the playground.
 
-## What to open
+When a backend is up, copy the ingestion endpoint from **Settings → Access → Ingestion Keys** into `.env` as `GROUNDCOVER_SITE` and run `./scripts/install-groundcover.sh`. The script writes a gitignored values file and runs `groundcover deploy -f`, matching the [install doc](https://docs.groundcover.com/getting-started/installation-and-updating/connect-kubernetes-cluster): backend disabled, your endpoint as the site, `clusterId` `pebble`, `env` `dev`. If `.env` is missing, the script exits and the shop is untouched. `groundcover auth login` is the documented login command if the CLI asks. If it asks about taints, skip the control plane. Leave `GROUNDCOVER_TOKEN` empty unless you already created a Sensor key. The sensor is a privileged DaemonSet. The `portal` pod calls `app.groundcover.com` on port 443, so the VM needs outbound HTTPS. The [traces page](https://docs.groundcover.com/investigate/traces-and-apm/traces) says eBPF traces show up within seconds. If a page is empty, check the `groundcover` namespace and BTF.
 
-The [5 quick steps](https://docs.groundcover.com/getting-started/5-quick-steps-to-get-you-started) call Workloads the home page. You should see `shop`, `catalog`, `postgres`, `redis`, and `loadgen`.
+## What the sensor would show
 
-The [Map page](https://docs.groundcover.com/investigate/maps) is eBPF spans only. A node is a workload. A line is a call, labeled HTTP, PostgreSQL, or Redis. Green means every status on that line is OK. Red means at least one is Error. Traces → Map can include other span sources. This app emits none, so the two maps should agree.
-
-Open a trace. The traces doc says you get both sides, the resource, and the payload, including bodies. SQL is the `db.statement` attribute. A path is `http.path`. Sampling stores errors, unusually slow calls, and a baseline of normal ones, so the list is not every request. The APM page says the metrics still come from the full stream.
-
-Logs are stdout. [Log management](https://docs.groundcover.com/capabilities/log-management) says collection needs no configuration, and logfmt becomes attributes, so this filter works:
-
-```
-namespace:pebble workload:shop level:error
-```
-
-The [search page](https://docs.groundcover.com/investigate/querying-your-groundcover-data/search-performance) says to put `namespace` and `workload` first. Do not expect a log line to open a trace by id. The [correlation doc](https://docs.groundcover.com/investigate/log-and-trace-correlation) says groundcover does not inject trace ids, and this code never writes one. A stored trace still carries nearby logs from that service. Filter both pages by workload and by the minute you care about.
-
-Latency and errors are the APM golden signals. In Explore, the APM picker has request rate, error rate, and p50, p95, and p99 latency. `postgresql` and `redis` are resource types in the [query examples](https://docs.groundcover.com/reference/remote-access-and-apis/api-examples/query-apm-measurements).
+The [5 quick steps](https://docs.groundcover.com/getting-started/5-quick-steps-to-get-you-started) call Workloads the home page. With a sensor on this cluster you would see `shop`, `catalog`, `postgres`, `redis`, and `loadgen`. The [Map page](https://docs.groundcover.com/investigate/maps) is eBPF spans: a node is a workload, a line is a call, green means every status is OK, red means one is Error. Traces include the payload and, for SQL, `db.statement`. Logs are the stdout lines. [Log management](https://docs.groundcover.com/capabilities/log-management) says logfmt is parsed, so `namespace:pebble workload:shop level:error` is a real filter. groundcover does not inject trace ids, and this code never writes one, so a log line does not jump to a trace by id. [Correlation](https://docs.groundcover.com/investigate/log-and-trace-correlation) needs the id in the log.
 
 ## Break three things
 
-Each script is `kubectl set env`. Turn it off the same way, or run `make fix`. One at a time.
+Each script is `kubectl set env`. Turn it off the same way, or run `make fix`. One at a time. Confirm the symptom with curl and `kubectl` even if you never install the sensor.
 
-**Slow database.** `./scenarios/slow-db.sh on` sets `SLOW_DB_MS=2000` on catalog. The next product read runs `SELECT pg_sleep(2)`, then the real select. Time a curl of `/products`. In Traces, filter `namespace:pebble workload:catalog` and read `duration_seconds`. The statement is on the span. P95 latency is the metric form of the same fact. The map stays green, because the call succeeds. `./scenarios/slow-db.sh off` sets the variable back to `0`.
+**Slow database.** `./scenarios/slow-db.sh on` sets `SLOW_DB_MS=2000`. The next product read runs `SELECT pg_sleep(2)`. Time a curl of `/products`, then read `msg=slow_query` in the catalog log. `./scenarios/slow-db.sh off` sets it back to `0`.
 
-**Error spike.** `./scenarios/error-spike.sh on` sets `FORCE_ERROR=1` on shop. Every `POST /orders` returns 500. Product reads stay 200, and the generator sends both, so the process is up and the error rate is not. Logs use the `level:error` filter above. Traces: `namespace:pebble workload:shop status_code>=500`. The traces doc uses HTTP 500 as the example of a response sampling keeps. Error rate is the APM signal. A map line goes red when any span on it is an error. Turning it off restores `201`.
+**Error spike.** `./scenarios/error-spike.sh on` sets `FORCE_ERROR=1`. Every `POST /orders` returns 500 and logs `level=error`. `GET /products` stays 200. Off restores `201`.
 
-**Memory.** `./scenarios/oom.sh on` sets `OOM=1`. Catalog allocates until the 192Mi limit kills it. The Deployment uses Recreate, so the old pod is removed and the new one loops. `kubectl -n pebble get pods -l app=catalog` shows `OOMKilled`, and usually `CrashLoopBackOff` once the restart delay starts. Events: `namespace:pebble type:Warning reason:OOMKilling`. The [metrics page](https://docs.groundcover.com/investigate/metrics/metrics-and-labels) also lists `groundcover_container_memory_oom_events`. Shop logs `502` while catalog will not stay up. `./scenarios/oom.sh off` rolls a pod that does not allocate, and `/products` returns 200 again.
-
-The process also stops itself at 384MiB. That only matters if the cgroup limit is not enforced. On a normal kind node the kernel kills it first, which is the `OOMKilled` reason you want.
+**Memory.** `./scenarios/oom.sh on` sets `OOM=1`. Catalog allocates until the 192Mi limit kills it. `kubectl -n pebble get pods -l app=catalog` shows `OOMKilled`. The docs' event query for that is `reason:OOMKilling`, on the [search page](https://docs.groundcover.com/investigate/querying-your-groundcover-data/search-performance). The playground's Events nav was not opened far enough to find an example, so treat the pod status as the check. `./scenarios/oom.sh off` rolls a pod that does not allocate.
 
 ## When you are done
 
 `./teardown.sh` deletes the kind cluster, sensor included. To drop only groundcover, the install doc says `groundcover delete`.
 
-For a live talk, use [demo-script.md](demo-script.md). Bring the cluster and the sensor up before the clock starts. The minutes that matter are the three toggles, not the image build.
+For a live talk, use [demo-script.md](demo-script.md). Bring the kind cluster up before the clock starts. Leave the sensor uninstalled unless you already have a backend. The minutes that matter are the three toggles in the terminal, then the playground as a picture of someone else's cluster.
